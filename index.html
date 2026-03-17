@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HydroTrack">
+<meta name="theme-color" content="#0f4c6e">
+<title>HydroTrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #060e18; --surface: #0d1f30; --surface2: #142840; --border: #1e3a52;
+    --teal: #00c9b1; --teal-dim: #009e8c; --amber: #f5a623; --amber-dim: #c4841c;
+    --red: #ff6b6b; --blue: #4a9eff; --purple: #9b7fe8;
+    --text: #e8f4f8; --text-muted: #6a90a8; --text-dim: #3a5f78;
+    --radius: 14px; --radius-sm: 8px;
+    --font: 'Sora', sans-serif; --mono: 'Space Mono', monospace;
+    --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100dvh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+  #app { display: flex; flex-direction: column; height: 100dvh; }
+
+  /* ── HEADER ── */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: calc(var(--safe-top) + 14px) 20px 14px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header-left {}
+  .header-title { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .header-title span { color: var(--teal); }
+  .header-subtitle { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .header-date { font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+  .version-badge { font-size: 9px; font-family: var(--mono); color: var(--text-dim); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+  /* ── LAYOUT ── */
+  .content { flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: calc(70px + var(--safe-bottom)); -webkit-overflow-scrolling: touch; }
+  .nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 0 calc(var(--safe-bottom) + 4px); display: flex; z-index: 100; }
+  .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; color: var(--text-dim); cursor: pointer; font-family: var(--font); font-size: 10px; font-weight: 500; padding: 4px 0; transition: color 0.2s; }
+  .nav-btn.active { color: var(--teal); }
+  .nav-btn svg { width: 22px; height: 22px; }
+
+  /* ── VIEWS ── */
+  .view { display: none; animation: fadeIn 0.2s ease; }
+  .view.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── CARDS ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 12px 16px 0; }
+  .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* ── SUMMARY CARDS ── */
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 16px 0; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; position: relative; overflow: hidden; }
+  .summary-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius) var(--radius) 0 0; }
+  .summary-card.intake::before { background: var(--teal); }
+  .summary-card.output::before { background: var(--amber); }
+  .summary-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+  .summary-value { font-size: 28px; font-weight: 700; font-family: var(--mono); margin: 4px 0 2px; }
+  .summary-card.intake .summary-value { color: var(--teal); }
+  .summary-card.output .summary-value { color: var(--amber); }
+  .summary-unit { font-size: 10px; color: var(--text-muted); line-height: 1.4; }
+  .summary-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+  .summary-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+  .intake .summary-bar-fill { background: var(--teal); }
+  .output .summary-bar-fill { background: var(--amber); }
+  .health-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px; margin-top: 6px; }
+  .health-badge.good { background: rgba(0,201,177,0.15); color: var(--teal); }
+  .health-badge.warn { background: rgba(245,166,35,0.15); color: var(--amber); }
+  .health-badge.low  { background: rgba(255,107,107,0.15); color: var(--red); }
+  .health-badge.neutral { background: rgba(74,158,255,0.15); color: var(--blue); }
+
+  /* ── WAKE BTN ── */
+  .wake-btn { display: flex; align-items: center; justify-content: space-between; background: var(--surface2); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 12px 14px; cursor: pointer; transition: border-color 0.2s; }
+  .wake-btn.set { border-style: solid; border-color: var(--teal); }
+  .wake-btn-label { font-size: 13px; color: var(--text-muted); }
+  .wake-btn-value { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--teal); }
+
+  /* ── ACTION BUTTONS ── */
+  .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 16px 0; }
+  .btn-action { border: none; border-radius: var(--radius); padding: 14px; font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.1s, opacity 0.2s; }
+  .btn-action:active { transform: scale(0.97); opacity: 0.85; }
+  .btn-intake { background: var(--teal); color: #060e18; }
+  .btn-output { background: var(--amber); color: #060e18; }
+
+  /* ── EVENTS LIST ── */
+  .events-list { margin: 0; }
+  .event-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .event-item:last-child { border-bottom: none; }
+  .event-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+  .event-dot.intake { background: var(--teal); }
+  .event-dot.output { background: var(--amber); }
+  .event-dot.wake { background: var(--blue); }
+  .event-meta { flex: 1; }
+  .event-name { font-size: 13px; font-weight: 500; }
+  .event-time { font-size: 11px; color: var(--text-muted); font-family: var(--mono); margin-top: 1px; }
+  .event-amount { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+  .event-amount.intake { color: var(--teal); }
+  .event-amount.output { color: var(--amber); }
+  .event-del { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 6px; border-radius: 6px; font-size: 16px; line-height: 1; transition: color 0.2s; }
+  .event-del:hover { color: var(--red); }
+  .empty-state { text-align: center; padding: 24px 20px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+
+  /* ── TOILET SCHEDULE ── */
+  .schedule-section { margin-bottom: 14px; }
+  .schedule-section-title { font-size: 10px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .schedule-section-title .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-night { background: var(--purple); }
+  .dot-day { background: var(--blue); }
+  .schedule-times { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .schedule-chip { display: flex; align-items: center; gap: 4px; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 10px; font-size: 12px; font-family: var(--mono); cursor: pointer; transition: all 0.15s; }
+  .schedule-chip:hover { border-color: var(--blue); }
+  .schedule-chip .chip-del { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 0 0 0 4px; line-height: 1; transition: color 0.15s; }
+  .schedule-chip .chip-del:hover { color: var(--red); }
+  .schedule-chip.night-chip { border-color: rgba(155,127,232,0.4); }
+  .schedule-chip.night-chip:hover { border-color: var(--purple); }
+  .schedule-add { background: none; border: 1px dashed var(--border); border-radius: 20px; padding: 5px 12px; font-size: 12px; color: var(--text-dim); cursor: pointer; font-family: var(--font); transition: all 0.15s; }
+  .schedule-add:hover { border-color: var(--blue); color: var(--blue); }
+  .schedule-empty { font-size: 12px; color: var(--text-dim); font-style: italic; }
+  .schedule-regenerate { display: flex; align-items: center; justify-content: flex-end; margin-top: 10px; }
+  .btn-regenerate { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: var(--radius-sm); padding: 5px 12px; font-size: 11px; font-family: var(--font); cursor: pointer; transition: all 0.15s; }
+  .btn-regenerate:hover { border-color: var(--teal); color: var(--teal); }
+
+  /* ── MODALS ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(6,14,24,0.85); display: flex; align-items: flex-end; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.25s; backdrop-filter: blur(4px); }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; width: 100%; max-width: 480px; padding: 20px 20px calc(var(--safe-bottom) + 20px); transform: translateY(30px); transition: transform 0.25s ease; max-height: 90dvh; overflow-y: auto; }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: -8px auto 16px; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .modal-title .type-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+  .type-badge.intake { background: rgba(0,201,177,0.2); color: var(--teal); }
+  .type-badge.output { background: rgba(245,166,35,0.2); color: var(--amber); }
+
+  .form-group { margin-bottom: 16px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .form-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; display: block; }
+  .form-hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: var(--font); color: var(--text); transition: all 0.15s; }
+  .chip.selected { background: var(--teal); border-color: var(--teal); color: #060e18; font-weight: 600; }
+  .chip.selected.output-chip { background: var(--amber); border-color: var(--amber); }
+  .form-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 14px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none; transition: border-color 0.2s; }
+  .form-input:focus { border-color: var(--teal); }
+  .form-divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .form-section-title { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; }
+
+  .btn-primary { width: 100%; background: var(--teal); color: #060e18; border: none; border-radius: var(--radius); padding: 15px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; margin-top: 8px; transition: opacity 0.2s; }
+  .btn-primary:active { opacity: 0.85; }
+  .btn-primary.output-btn { background: var(--amber); }
+  .btn-cancel { width: 100%; background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: var(--radius); padding: 13px; font-size: 14px; font-weight: 500; font-family: var(--font); cursor: pointer; margin-top: 8px; }
+
+  /* ── CALENDAR ── */
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 4px 0; }
+  .cal-day-header { text-align: center; font-size: 10px; color: var(--text-dim); font-weight: 600; padding: 4px 0; text-transform: uppercase; }
+  .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; cursor: pointer; position: relative; transition: all 0.15s; color: var(--text-dim); }
+  .cal-day.has-data { color: var(--text); background: var(--surface2); }
+  .cal-day.has-data:hover { background: var(--border); }
+  .cal-day.today { color: var(--teal); font-weight: 700; background: rgba(0,201,177,0.1); }
+  .cal-day.selected { background: var(--teal) !important; color: #060e18 !important; font-weight: 700; }
+  .cal-day.empty { pointer-events: none; }
+  .cal-dot { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--teal); }
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .cal-nav-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 18px; cursor: pointer; }
+  .cal-month { font-weight: 700; font-size: 15px; }
+
+  .detail-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 0; }
+  .detail-date { font-size: 15px; font-weight: 700; }
+  .back-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: var(--font); }
+
+  /* ── CHARTS ── */
+  .chart-tabs { display: flex; gap: 0; margin: 14px 16px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+  .chart-tab { flex: 1; padding: 9px; text-align: center; font-size: 12px; font-weight: 600; cursor: pointer; background: var(--surface2); color: var(--text-muted); border: none; font-family: var(--font); transition: all 0.15s; }
+  .chart-tab.active { background: var(--teal); color: #060e18; }
+  .chart-container { padding: 16px; position: relative; height: 260px; }
+  .chart-legend { display: flex; gap: 16px; justify-content: center; margin-top: 4px; padding-bottom: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 0 16px 8px; }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 8px; text-align: center; }
+  .stat-value { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--teal); }
+  .stat-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+  /* ── CHART DATE PICKER ── */
+  .chart-day-picker { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; }
+  .chart-day-picker label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); white-space: nowrap; }
+  .chart-day-picker input[type=date] { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; transition: border-color 0.2s; color-scheme: dark; }
+  .chart-day-picker input[type=date]:focus { border-color: var(--teal); }
+  .chart-day-today { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 12px; font-family: var(--font); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .chart-day-today:hover { border-color: var(--teal); color: var(--teal); }
+
+  /* ── IMPORT ── */
+  .import-dropzone { margin: 0 16px; border: 2px dashed var(--border); border-radius: var(--radius); padding: 28px 20px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+  .import-dropzone:hover, .import-dropzone.drag-over { border-color: var(--teal); background: rgba(0,201,177,0.05); }
+  .import-dropzone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .import-dropzone-icon { font-size: 36px; margin-bottom: 8px; }
+  .import-dropzone-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .import-dropzone-hint { font-size: 12px; color: var(--text-muted); }
+  .import-preview { margin: 12px 16px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: none; }
+  .import-preview-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+  .import-preview-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .import-preview-stat { background: var(--surface2); border-radius: var(--radius-sm); padding: 8px; text-align: center; }
+  .import-preview-val { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue); }
+  .import-preview-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .import-mode-group { display: flex; gap: 8px; margin-bottom: 12px; }
+  .import-mode-btn { flex: 1; padding: 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: var(--font); cursor: pointer; text-align: center; border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); transition: all 0.15s; }
+  .import-mode-btn.active { border-color: var(--blue); background: rgba(74,158,255,0.15); color: var(--blue); }
+  .import-mode-hint { font-size: 11px; color: var(--text-dim); margin-bottom: 12px; line-height: 1.5; }
+  .btn-import-confirm { width: 100%; background: var(--blue); color: #fff; border: none; border-radius: var(--radius); padding: 14px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: opacity 0.2s; }
+  .btn-import-confirm:active { opacity: 0.85; }
+  .btn-import-cancel { width: 100%; background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: var(--radius); padding: 12px; font-size: 14px; font-family: var(--font); cursor: pointer; margin-top: 8px; }
+
+  /* ── IMPORT ── */
+  .import-drop-zone { margin: 0 16px; border: 2px dashed var(--border); border-radius: var(--radius); padding: 28px 20px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+  .import-drop-zone:hover, .import-drop-zone.drag-over { border-color: var(--teal); background: rgba(0,201,177,0.05); }
+  .import-drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .import-drop-icon { font-size: 36px; margin-bottom: 8px; }
+  .import-drop-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .import-drop-hint { font-size: 12px; color: var(--text-muted); }
+  .import-result { margin: 12px 16px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: none; }
+  .import-result.show { display: block; }
+  .import-result-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .import-result-rows { font-size: 12px; color: var(--text-muted); line-height: 1.8; }
+  .import-result-rows strong { color: var(--teal); font-family: var(--mono); }
+  .import-mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 16px 0; }
+  .import-mode-btn { border: 1px solid var(--border); background: var(--surface2); border-radius: var(--radius); padding: 12px 10px; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer; text-align: center; transition: all 0.15s; }
+  .import-mode-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .import-mode-btn.selected { border-color: var(--teal); background: rgba(0,201,177,0.12); color: var(--teal); }
+  .import-mode-desc { font-size: 11px; font-weight: 400; color: var(--text-dim); display: block; margin-top: 3px; }
+  .btn-import-confirm { display: block; margin: 12px 16px 0; width: calc(100% - 32px); background: linear-gradient(135deg, #009e8c, #00c9b1); color: #060e18; border: none; border-radius: var(--radius); padding: 15px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; transition: opacity 0.2s; }
+  .btn-import-confirm:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-import-confirm:not(:disabled):active { opacity: 0.85; }
+
+  /* ── EXPORT ── */
+  .export-icon { text-align: center; padding: 30px 0 10px; font-size: 48px; }
+  .export-desc { text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.6; padding: 0 20px 20px; }
+  .btn-export { display: block; margin: 0 16px; background: linear-gradient(135deg, #00c9b1, #4a9eff); color: #060e18; border: none; border-radius: var(--radius); padding: 16px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; text-align: center; transition: opacity 0.2s; }
+  .btn-export:active { opacity: 0.85; }
+  .export-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 16px 0; }
+  .export-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; text-align: center; }
+  .export-stat-val { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--teal); }
+  .export-stat-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── TOAST ── */
+  .toast { position: fixed; top: calc(var(--safe-top) + 80px); left: 50%; transform: translateX(-50%) translateY(-20px); background: var(--surface2); border: 1px solid var(--teal); color: var(--teal); border-radius: 20px; padding: 8px 18px; font-size: 13px; font-weight: 500; z-index: 2000; opacity: 0; transition: all 0.3s; white-space: nowrap; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  ::-webkit-scrollbar { width: 0; }
+  .section-spacer { height: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-left">
+      <div class="header-title">Hydro<span>Track</span></div>
+      <div class="header-subtitle">
+        <div class="header-date" id="headerDate"></div>
+        <div class="version-badge" id="versionBadge"></div>
+      </div>
+    </div>
+    <div id="headerWake" style="font-size:11px;color:var(--text-muted);text-align:right;line-height:1.5;"></div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ TODAY VIEW ══ -->
+    <div class="view active" id="view-today">
+      <div class="summary-grid">
+        <div class="summary-card intake">
+          <div class="summary-label">Inname</div>
+          <div class="summary-value" id="totalIntake">0</div>
+          <div class="summary-unit">ml · doel 2000 ml</div>
+          <div class="summary-bar"><div class="summary-bar-fill" id="intakeBar" style="width:0%"></div></div>
+          <div id="intakeBadge"></div>
+        </div>
+        <div class="summary-card output">
+          <div class="summary-label">Uitscheiding</div>
+          <div class="summary-value" id="totalOutput">0</div>
+          <div class="summary-unit" id="outputGoalText">ml · doel — ml</div>
+          <div class="summary-bar"><div class="summary-bar-fill" id="outputBar" style="width:0%"></div></div>
+          <div id="outputBadge"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">Dagstart</div>
+        <div class="wake-btn" id="wakeBtn" onclick="openWakeModal()">
+          <span class="wake-btn-label" id="wakeBtnLabel">Tik om dagstart vast te leggen</span>
+          <span class="wake-btn-value" id="wakeBtnValue">—</span>
+        </div>
+      </div>
+
+      <!-- Toilet schedule card (shown when wakeTime is set) -->
+      <div class="card" id="toiletCard" style="margin-top:12px;display:none">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Toiletschema</span>
+          <button class="btn-regenerate" onclick="regenerateSchedule()">↺ Genereer opnieuw</button>
+        </div>
+        <div id="toiletScheduleContent"></div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn-action btn-intake" onclick="openAddModal('intake')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M12 5v14M5 12h14"/></svg>
+          Inname
+        </button>
+        <button class="btn-action btn-output" onclick="openAddModal('output')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M12 5v14M5 12h14"/></svg>
+          Uitscheiding
+        </button>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">Gebeurtenissen vandaag</div>
+        <div class="events-list" id="todayEvents">
+          <div class="empty-state">Nog geen gebeurtenissen.<br>Druk op + om te beginnen.</div>
+        </div>
+      </div>
+      <div class="section-spacer"></div>
+    </div>
+
+    <!-- ══ HISTORY VIEW ══ -->
+    <div class="view" id="view-history">
+      <div id="historyCalendar">
+        <div class="card">
+          <div class="cal-nav">
+            <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+            <span class="cal-month" id="calMonth"></span>
+            <button class="cal-nav-btn" onclick="calNext()">›</button>
+          </div>
+          <div class="calendar-grid" id="calDayHeaders"></div>
+          <div class="calendar-grid" id="calGrid"></div>
+        </div>
+        <div class="card" style="text-align:center;color:var(--text-dim);font-size:13px;padding:24px">
+          Selecteer een dag in de kalender om te bekijken of bewerken.
+        </div>
+      </div>
+      <div id="historyDetail" style="display:none">
+        <div class="detail-header">
+          <button class="back-btn" onclick="showCalendar()">‹ Terug</button>
+          <div class="detail-date" id="detailDate"></div>
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="summary-grid" style="margin:0 0 14px;">
+            <div class="summary-card intake" style="margin:0">
+              <div class="summary-label">Inname</div>
+              <div class="summary-value" id="detailIntake" style="font-size:22px">0</div>
+              <div class="summary-unit">ml</div>
+            </div>
+            <div class="summary-card output" style="margin:0">
+              <div class="summary-label">Uitscheiding</div>
+              <div class="summary-value" id="detailOutput" style="font-size:22px">0</div>
+              <div class="summary-unit" id="detailOutputGoalText">ml</div>
+            </div>
+          </div>
+          <div class="card-title">Dagstart</div>
+          <div id="detailWakeRow" style="margin-bottom:14px"></div>
+          <div id="detailToiletSection" style="margin-bottom:14px"></div>
+          <div class="card-title">Gebeurtenissen</div>
+          <div class="events-list" id="detailEvents"></div>
+        </div>
+        <div class="action-row" id="detailActionRow">
+          <button class="btn-action btn-intake" onclick="openDetailAddModal('intake')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M12 5v14M5 12h14"/></svg>
+            Inname
+          </button>
+          <button class="btn-action btn-output" onclick="openDetailAddModal('output')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M12 5v14M5 12h14"/></svg>
+            Uitscheiding
+          </button>
+        </div>
+        <div class="section-spacer"></div>
+      </div>
+    </div>
+
+    <!-- ══ CHARTS VIEW ══ -->
+    <div class="view" id="view-charts">
+      <div class="chart-tabs">
+        <button class="chart-tab active" onclick="setChartPeriod('day',this)">Dag</button>
+        <button class="chart-tab" onclick="setChartPeriod('week',this)">Week</button>
+        <button class="chart-tab" onclick="setChartPeriod('month',this)">Maand</button>
+      </div>
+      <!-- Day date picker, only shown for Dag tab -->
+      <div class="chart-day-picker" id="chartDayPickerRow">
+        <label>Dag:</label>
+        <input type="date" id="chartDayInput" onchange="onChartDayChange(this.value)">
+        <button class="chart-day-today" onclick="onChartDayChange(today())">Vandaag</button>
+      </div>
+      <div class="chart-container"><canvas id="mainChart"></canvas></div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--teal)"></div>Inname</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Uitscheiding</div>
+      </div>
+      <div class="stats-grid" id="chartStats"></div>
+      <div class="section-spacer"></div>
+    </div>
+
+    <!-- ══ EXPORT VIEW ══ -->
+    <div class="view" id="view-export">
+      <!-- EXPORT SECTION -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">📤 Exporteren</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:12px">
+          Exporteer alle gegevens als Excel-bestand (.xlsx). Inclusief toiletschema per dag.
+        </div>
+        <div class="export-stats" id="exportStats" style="margin:0 0 12px"></div>
+        <button class="btn-export" style="margin:0" onclick="exportExcel()">⬇ Exporteer naar Excel</button>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6">
+          <strong style="color:var(--text-muted)">Blad 1 — Gebeurtenissen:</strong> alle individuele registraties.<br>
+          <strong style="color:var(--text-muted)">Blad 2 — Dagoverzicht:</strong> totalen, dagstart en toiletschema per dag.<br>
+          <strong style="color:var(--text-muted)">Versie:</strong> <span id="exportVersion" style="font-family:var(--mono)"></span>
+        </div>
+      </div>
+
+      <!-- IMPORT SECTION -->
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">📥 Importeren</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:14px">
+          Laad een eerder geëxporteerd HydroTrack Excel-bestand om gegevens te migreren of samen te voegen.
+        </div>
+
+      <!-- IMPORT SECTION -->
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">📥 Importeren</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:14px">
+          Laad een eerder geëxporteerd HydroTrack Excel-bestand om gegevens te migreren of samen te voegen.
+        </div>
+
+        <!-- Drop zone -->
+        <div class="import-drop-zone" id="importDropZone">
+          <input type="file" accept=".xlsx,.xls" id="importFileInput" onchange="onImportFileSelected(this)">
+          <div class="import-drop-icon">📂</div>
+          <div class="import-drop-label" id="importDropLabel">Tik om bestand te kiezen</div>
+          <div class="import-drop-hint" id="importDropHint">.xlsx bestand van een eerdere HydroTrack export</div>
+        </div>
+
+        <!-- Preview / result -->
+        <div class="import-result" id="importResult">
+          <div class="import-result-title" id="importResultTitle"></div>
+          <div class="import-result-rows" id="importResultRows"></div>
+        </div>
+
+        <!-- Mode selector -->
+        <div class="import-mode-row" id="importModeRow" style="display:none">
+          <button class="import-mode-btn selected" id="importModesMerge" onclick="selectImportMode('merge')">
+            Samenvoegen
+            <span class="import-mode-desc">Ontbrekende dagen toevoegen, bestaande behouden</span>
+          </button>
+          <button class="import-mode-btn" id="importModesReplace" onclick="selectImportMode('replace')">
+            Vervangen
+            <span class="import-mode-desc">Alle bestaande data wissen en vervangen</span>
+          </button>
+        </div>
+
+        <button class="btn-import-confirm" id="importConfirmBtn" disabled onclick="confirmImport()">
+          ↑ Importeer gegevens
+        </button>
+      </div>
+
+      <div class="section-spacer"></div>
+    </div>
+
+  </div><!-- end content -->
+
+  <nav class="nav">
+    <button class="nav-btn active" onclick="showView('today',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M18.36 5.64l1.41-1.41"/></svg>
+      Vandaag
+    </button>
+    <button class="nav-btn" onclick="showView('history',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Geschiedenis
+    </button>
+    <button class="nav-btn" onclick="showView('charts',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Grafieken
+    </button>
+    <button class="nav-btn" onclick="showView('export',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export
+    </button>
+  </nav>
+</div>
+
+<!-- ══ ADD EVENT MODAL ══ -->
+<div class="modal-overlay" id="addModal" onclick="closeOnBackdrop(event,'addModal')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modalTitle">Inname <span class="type-badge intake">inname</span></div>
+    <div class="form-group">
+      <label class="form-label">Categorie</label>
+      <div class="chip-group" id="categoryChips"></div>
+    </div>
+    <div class="form-group" id="customCatGroup" style="display:none">
+      <label class="form-label">Eigen categorie naam</label>
+      <input class="form-input" id="customCatInput" type="text" placeholder="Bijv. sportdrank, soep...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Hoeveelheid (ml)</label>
+      <div class="chip-group" id="amountChips"></div>
+    </div>
+    <div class="form-group" id="customAmtGroup" style="display:none">
+      <label class="form-label">Eigen hoeveelheid (ml)</label>
+      <input class="form-input" id="customAmtInput" type="number" placeholder="Bijv. 175" min="1" max="5000">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tijd</label>
+      <input class="form-input" id="eventTime" type="time">
+    </div>
+    <button class="btn-primary" id="saveEventBtn" onclick="saveEvent()">Opslaan</button>
+    <button class="btn-cancel" onclick="closeModal('addModal')">Annuleren</button>
+  </div>
+</div>
+
+<!-- ══ WAKE TIME MODAL ══ -->
+<div class="modal-overlay" id="wakeModal" onclick="closeOnBackdrop(event,'wakeModal')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Dagstart vastleggen</div>
+
+    <div class="form-group">
+      <label class="form-label">Tijdstip van opstaan</label>
+      <input class="form-input" id="wakeTimeInput" type="time">
+    </div>
+
+    <div class="form-divider"></div>
+    <div class="form-section-title">🚽 Toiletschema overdag</div>
+
+    <div class="form-row">
+      <div>
+        <label class="form-label">Interval (uren)</label>
+        <input class="form-input" id="toiletIntervalInput" type="number" min="1" max="12" step="0.5" value="3" placeholder="3">
+        <div class="form-hint">Hoe vaak naar het toilet na dagstart tot middernacht</div>
+      </div>
+      <div>
+        <label class="form-label">Eerste bezoek</label>
+        <input class="form-input" id="firstVisitOffsetInput" type="number" min="0.5" max="6" step="0.5" value="3" placeholder="3">
+        <div class="form-hint">Uren na dagstart voor het eerste bezoek</div>
+      </div>
+    </div>
+
+    <div class="form-divider"></div>
+    <div class="form-section-title">🌙 Nachtelijk toiletbezoek</div>
+
+    <div class="form-group">
+      <label class="form-label">Tijdstip nachtbezoek (optioneel)</label>
+      <input class="form-input" id="nightToiletInput" type="time" placeholder="bijv. 03:30">
+      <div class="form-hint">Tussen middernacht en dagstart — laat leeg als je niet wakker wordt</div>
+    </div>
+
+    <button class="btn-primary" onclick="saveWakeTime()">Opslaan & schema genereren</button>
+    <button class="btn-cancel" onclick="closeModal('wakeModal')">Annuleren</button>
+  </div>
+</div>
+
+<!-- ══ TOILET TIME EDIT MODAL ══ -->
+<div class="modal-overlay" id="timeEditModal" onclick="closeOnBackdrop(event,'timeEditModal')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="timeEditTitle">Tijdstip bewerken</div>
+    <div class="form-group">
+      <label class="form-label">Tijdstip</label>
+      <input class="form-input" id="timeEditInput" type="time">
+    </div>
+    <button class="btn-primary" onclick="saveTimeEdit()">Opslaan</button>
+    <button class="btn-cancel" onclick="closeModal('timeEditModal')">Annuleren</button>
+  </div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// VERSION
+// ═══════════════════════════════════════════
+const APP_VERSION = 'v2026.03.17.5';
+
+// ═══════════════════════════════════════════
+// DB — IndexedDB
+// ═══════════════════════════════════════════
+let db;
+const DB_NAME = 'HydroTrackDB', DB_VER = 1;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('days')) d.createObjectStore('days', { keyPath: 'date' });
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror   = e => rej(e);
+  });
+}
+function dbGet(date) {
+  return new Promise((res,rej) => {
+    const req = db.transaction('days','readonly').objectStore('days').get(date);
+    req.onsuccess = () => res(req.result || null);
+    req.onerror   = () => rej(req.error);
+  });
+}
+function dbPut(record) {
+  return new Promise((res,rej) => {
+    const req = db.transaction('days','readwrite').objectStore('days').put(record);
+    req.onsuccess = () => res();
+    req.onerror   = () => rej(req.error);
+  });
+}
+function dbGetAll() {
+  return new Promise((res,rej) => {
+    const req = db.transaction('days','readonly').objectStore('days').getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror   = () => rej(req.error);
+  });
+}
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+const today = () => new Date().toISOString().slice(0, 10);
+let currentDate = today();
+let currentDayRecord = null;
+let activeEditRecord = null;
+let currentModalType = 'intake';
+let selectedCategory = null;
+let selectedAmount = null;
+let mainChartInstance = null;
+let chartPeriod = 'day';
+let chartDayDate = today(); // selected date for day chart
+let calViewDate = new Date();
+let selectedCalDate = null;
+// toilet time editing state
+let timeEditContext = null; // { record, section: 'night'|'day', index: number|null }
+
+const INTAKE_CATS = ['Koffie','Water','Thee','Sap','Frisdrank','Eigen...'];
+const OUTPUT_CATS = ['Mictie','Eigen...'];
+const AMOUNTS = [140, 250, 300];
+
+// ═══════════════════════════════════════════
+// DATA MODEL
+// ═══════════════════════════════════════════
+function newDayRecord(date) {
+  return {
+    date,
+    wakeTime: null,
+    toiletInterval: 3,       // hours between visits during the day
+    firstVisitOffset: 3,     // hours after wake for first visit
+    nightToiletTime: null,   // single planned night visit HH:MM
+    toiletSchedule: [],      // ['11:00','14:00',...] — auto-generated, user-editable
+    events: []
+  };
+}
+
+// Merge legacy records (no toilet fields) with defaults
+function ensureRecordFields(record) {
+  return Object.assign(newDayRecord(record.date), record);
+}
+
+// ═══════════════════════════════════════════
+// TOILET SCHEDULE HELPERS
+// ═══════════════════════════════════════════
+function generateToiletSchedule(wakeTime, intervalHours, firstOffsetHours) {
+  if (!wakeTime || !intervalHours || intervalHours <= 0) return [];
+  const [wh, wm] = wakeTime.split(':').map(Number);
+  const wakeMinutes = wh * 60 + wm;
+  const intervalMinutes = Math.round(intervalHours * 60);
+  const firstOffsetMinutes = Math.round((firstOffsetHours || intervalHours) * 60);
+  const schedule = [];
+  let current = wakeMinutes + firstOffsetMinutes;
+  while (current < 24 * 60) {
+    const h = Math.floor(current / 60);
+    const m = current % 60;
+    schedule.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    current += intervalMinutes;
+  }
+  return schedule;
+}
+
+function intakeSinceWake(record) {
+  if (!record.wakeTime) {
+    return record.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
+  }
+  return record.events
+    .filter(e => e.type==='intake' && e.time >= record.wakeTime)
+    .reduce((s,e) => s+e.amount, 0);
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+async function init() {
+  await openDB();
+  // Show version
+  document.getElementById('versionBadge').textContent = APP_VERSION;
+  document.getElementById('exportVersion').textContent = APP_VERSION;
+  // Date in header
+  const now = new Date();
+  document.getElementById('headerDate').textContent = now.toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long' });
+  // Load today
+  const raw = await dbGet(currentDate);
+  currentDayRecord = raw ? ensureRecordFields(raw) : newDayRecord(currentDate);
+  renderToday();
+  renderCalendar();
+  renderExportStats();
+}
+
+// ═══════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════
+function showView(name, btn) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  btn.classList.add('active');
+  if (name==='charts') {
+    // Ensure day picker is initialized
+    chartDayDate = chartDayDate || today();
+    document.getElementById('chartDayInput').value = chartDayDate;
+    document.getElementById('chartDayPickerRow').style.display = chartPeriod==='day' ? 'flex' : 'none';
+    renderChart();
+  }
+  if (name==='history') renderCalendar();
+  if (name==='export')  renderExportStats();
+}
+
+// ═══════════════════════════════════════════
+// TODAY VIEW
+// ═══════════════════════════════════════════
+function renderToday() {
+  const r = currentDayRecord;
+  const intake = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
+  const output = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+  const outputGoal = intakeSinceWake(r);
+
+  document.getElementById('totalIntake').textContent = intake;
+  document.getElementById('totalOutput').textContent = output;
+  document.getElementById('intakeBar').style.width   = Math.min(100, intake/2000*100)+'%';
+  document.getElementById('intakeBadge').innerHTML   = healthBadge(intake, 2000);
+
+  // Dynamic output goal
+  document.getElementById('outputGoalText').textContent = outputGoal > 0
+    ? `ml · doel ${outputGoal} ml (= inname)`
+    : r.wakeTime ? 'ml · doel wordt bepaald door inname' : 'ml · stel dagstart in voor doel';
+  document.getElementById('outputBar').style.width = (outputGoal > 0)
+    ? Math.min(100, output/outputGoal*100)+'%' : '0%';
+  document.getElementById('outputBadge').innerHTML = (outputGoal > 0)
+    ? healthBadge(output, outputGoal)
+    : `<div class="health-badge neutral">⏳ Dagstart instellen</div>`;
+
+  // Wake button
+  const wakeBtn = document.getElementById('wakeBtn');
+  if (r.wakeTime) {
+    document.getElementById('wakeBtnValue').textContent = r.wakeTime;
+    document.getElementById('wakeBtnLabel').textContent = 'Opgestaan om';
+    wakeBtn.classList.add('set');
+    document.getElementById('headerWake').textContent = '⏰ ' + r.wakeTime;
+  } else {
+    document.getElementById('wakeBtnValue').textContent = '—';
+    document.getElementById('wakeBtnLabel').textContent = 'Tik om dagstart vast te leggen';
+    wakeBtn.classList.remove('set');
+    document.getElementById('headerWake').textContent = '';
+  }
+
+  // Toilet schedule card
+  const toiletCard = document.getElementById('toiletCard');
+  if (r.wakeTime) {
+    toiletCard.style.display = 'block';
+    document.getElementById('toiletScheduleContent').innerHTML = renderToiletScheduleHTML(r, currentDate);
+  } else {
+    toiletCard.style.display = 'none';
+  }
+
+  // Events
+  const container = document.getElementById('todayEvents');
+  const evs = [...r.events].sort((a,b)=>a.time.localeCompare(b.time));
+  if (!r.wakeTime && evs.length === 0) {
+    container.innerHTML = '<div class="empty-state">Nog geen gebeurtenissen.<br>Stel eerst de dagstart in.</div>';
+    return;
+  }
+  let html = '';
+  if (r.wakeTime) html += eventRow({ type:'wake', category:'Dagstart', time:r.wakeTime }, currentDate);
+  evs.forEach(e => { html += eventRow(e, currentDate); });
+  container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// TOILET SCHEDULE RENDERING
+// ═══════════════════════════════════════════
+function renderToiletScheduleHTML(record, dateStr) {
+  const isToday = dateStr === currentDate;
+  const nightTime = record.nightToiletTime;
+  const dayTimes  = record.toiletSchedule || [];
+
+  let html = '';
+
+  // Night section
+  html += `<div class="schedule-section">
+    <div class="schedule-section-title">
+      <div class="dot dot-night"></div> Nacht (middernacht → dagstart)
+    </div>
+    <div class="schedule-times">`;
+
+  if (nightTime) {
+    html += `<div class="schedule-chip night-chip" onclick="editTime('${dateStr}','night',null)">
+      ${nightTime}
+      <button class="chip-del" onclick="event.stopPropagation();deleteTime('${dateStr}','night',null)">✕</button>
+    </div>`;
+  } else {
+    html += `<span class="schedule-empty">Niet ingesteld —</span>`;
+  }
+  html += `<button class="schedule-add" onclick="addNightTime('${dateStr}')">+ Nacht</button>`;
+  html += `</div></div>`;
+
+  // Day section
+  html += `<div class="schedule-section">
+    <div class="schedule-section-title">
+      <div class="dot dot-day"></div> Overdag (${record.wakeTime} → middernacht) · interval ${record.toiletInterval || 3}u
+    </div>
+    <div class="schedule-times">`;
+
+  dayTimes.forEach((t, i) => {
+    html += `<div class="schedule-chip" onclick="editTime('${dateStr}','day',${i})">
+      ${t}
+      <button class="chip-del" onclick="event.stopPropagation();deleteTime('${dateStr}','day',${i})">✕</button>
+    </div>`;
+  });
+
+  if (dayTimes.length === 0) html += `<span class="schedule-empty">Nog geen tijden</span>`;
+  html += `<button class="schedule-add" onclick="addDayTime('${dateStr}')">+ Tijd</button>`;
+  html += `</div></div>`;
+
+  return html;
+}
+
+// ═══════════════════════════════════════════
+// TOILET TIME EDITING
+// ═══════════════════════════════════════════
+async function editTime(dateStr, section, index) {
+  const record = dateStr === currentDate ? currentDayRecord : await dbGet(dateStr) || newDayRecord(dateStr);
+  timeEditContext = { record: ensureRecordFields(record), section, index, dateStr };
+  let current = '';
+  if (section === 'night') current = record.nightToiletTime || '';
+  else current = (record.toiletSchedule || [])[index] || '';
+  document.getElementById('timeEditTitle').textContent = section === 'night' ? 'Nachtbezoek bewerken' : 'Toilettijd bewerken';
+  document.getElementById('timeEditInput').value = current;
+  openModal('timeEditModal');
+}
+
+async function addNightTime(dateStr) {
+  const record = dateStr === currentDate ? currentDayRecord : await dbGet(dateStr) || newDayRecord(dateStr);
+  timeEditContext = { record: ensureRecordFields(record), section: 'night', index: null, dateStr };
+  document.getElementById('timeEditTitle').textContent = 'Nachtbezoek toevoegen';
+  document.getElementById('timeEditInput').value = '03:00';
+  openModal('timeEditModal');
+}
+
+async function addDayTime(dateStr) {
+  const record = dateStr === currentDate ? currentDayRecord : await dbGet(dateStr) || newDayRecord(dateStr);
+  const r = ensureRecordFields(record);
+  timeEditContext = { record: r, section: 'day', index: null, dateStr };
+  document.getElementById('timeEditTitle').textContent = 'Toilettijd toevoegen';
+  // Suggest next time after last entry
+  const last = (r.toiletSchedule || []).slice(-1)[0];
+  let suggest = '12:00';
+  if (last) {
+    const [h,m] = last.split(':').map(Number);
+    const next = h + (r.toiletInterval || 3);
+    if (next < 24) suggest = `${String(next).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  }
+  document.getElementById('timeEditInput').value = suggest;
+  openModal('timeEditModal');
+}
+
+async function saveTimeEdit() {
+  const val = document.getElementById('timeEditInput').value;
+  if (!val) { closeModal('timeEditModal'); return; }
+  const { record, section, index, dateStr } = timeEditContext;
+
+  if (section === 'night') {
+    record.nightToiletTime = val;
+  } else {
+    if (!record.toiletSchedule) record.toiletSchedule = [];
+    if (index === null) {
+      record.toiletSchedule.push(val);
+      record.toiletSchedule.sort();
+    } else {
+      record.toiletSchedule[index] = val;
+      record.toiletSchedule.sort();
+    }
+  }
+
+  await dbPut(record);
+  closeModal('timeEditModal');
+  if (dateStr === currentDate) { currentDayRecord = record; renderToday(); }
+  else { renderDetailView(record); }
+  showToast('Toilettijd opgeslagen');
+}
+
+async function deleteTime(dateStr, section, index) {
+  const record = dateStr === currentDate ? currentDayRecord : await dbGet(dateStr);
+  if (!record) return;
+  const r = ensureRecordFields(record);
+  if (section === 'night') {
+    r.nightToiletTime = null;
+  } else {
+    r.toiletSchedule.splice(index, 1);
+  }
+  await dbPut(r);
+  if (dateStr === currentDate) { currentDayRecord = r; renderToday(); }
+  else { renderDetailView(r); }
+  showToast('Verwijderd');
+}
+
+async function regenerateSchedule() {
+  const r = currentDayRecord;
+  if (!r.wakeTime) { showToast('Stel eerst de dagstart in'); return; }
+  r.toiletSchedule = generateToiletSchedule(r.wakeTime, r.toiletInterval || 3, r.firstVisitOffset || r.toiletInterval || 3);
+  await dbPut(r);
+  renderToday();
+  showToast('Schema gegenereerd ↺');
+}
+
+// ═══════════════════════════════════════════
+// WAKE TIME MODAL
+// ═══════════════════════════════════════════
+function openWakeModal() {
+  activeEditRecord = currentDayRecord;
+  const r = currentDayRecord;
+  const now = new Date();
+  document.getElementById('wakeTimeInput').value = r.wakeTime || `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('toiletIntervalInput').value = r.toiletInterval || 3;
+  document.getElementById('firstVisitOffsetInput').value = r.firstVisitOffset || r.toiletInterval || 3;
+  document.getElementById('nightToiletInput').value = r.nightToiletTime || '';
+  openModal('wakeModal');
+}
+
+async function saveWakeTime() {
+  const wakeTime = document.getElementById('wakeTimeInput').value;
+  if (!wakeTime) return;
+  const interval = parseFloat(document.getElementById('toiletIntervalInput').value) || 3;
+  const firstOffset = parseFloat(document.getElementById('firstVisitOffsetInput').value) || interval;
+  const nightTime = document.getElementById('nightToiletInput').value || null;
+
+  activeEditRecord.wakeTime        = wakeTime;
+  activeEditRecord.toiletInterval  = interval;
+  activeEditRecord.firstVisitOffset = firstOffset;
+  activeEditRecord.nightToiletTime = nightTime;
+  // Always regenerate schedule on save
+  activeEditRecord.toiletSchedule  = generateToiletSchedule(wakeTime, interval, firstOffset);
+
+  await dbPut(activeEditRecord);
+  closeModal('wakeModal');
+
+  if (activeEditRecord.date === currentDate) {
+    currentDayRecord = activeEditRecord;
+    renderToday();
+  } else {
+    renderDetailView(activeEditRecord);
+    renderCalendar();
+  }
+  showToast('Dagstart & schema opgeslagen ⏰');
+}
+
+async function openDetailWakeModal(dateStr) {
+  const raw = await dbGet(dateStr) || newDayRecord(dateStr);
+  const record = ensureRecordFields(raw);
+  activeEditRecord = record;
+  document.getElementById('wakeTimeInput').value = record.wakeTime || '08:00';
+  document.getElementById('toiletIntervalInput').value = record.toiletInterval || 3;
+  document.getElementById('firstVisitOffsetInput').value = record.firstVisitOffset || record.toiletInterval || 3;
+  document.getElementById('nightToiletInput').value = record.nightToiletTime || '';
+  openModal('wakeModal');
+}
+
+// ═══════════════════════════════════════════
+// ADD EVENT MODAL
+// ═══════════════════════════════════════════
+function openAddModal(type, targetRecord) {
+  activeEditRecord = targetRecord || currentDayRecord;
+  currentModalType = type;
+  selectedCategory = null;
+  selectedAmount = null;
+
+  document.getElementById('modalTitle').innerHTML =
+    (type==='intake' ? 'Inname' : 'Uitscheiding') +
+    ` <span class="type-badge ${type}">${type==='intake'?'inname':'uitscheiding'}</span>`;
+  document.getElementById('saveEventBtn').className = type==='output' ? 'btn-primary output-btn' : 'btn-primary';
+
+  const cats = type==='intake' ? INTAKE_CATS : OUTPUT_CATS;
+  document.getElementById('categoryChips').innerHTML = cats.map(c=>
+    `<button class="chip" onclick="selectCategory('${c}',this)">${c}</button>`).join('');
+  document.getElementById('amountChips').innerHTML = AMOUNTS.map(a=>
+    `<button class="chip" onclick="selectAmount(${a},this)">${a} ml</button>`).join('') +
+    `<button class="chip" onclick="selectAmount('custom',this)">Eigen...</button>`;
+
+  const now = new Date();
+  document.getElementById('eventTime').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  document.getElementById('customCatGroup').style.display = 'none';
+  document.getElementById('customAmtGroup').style.display = 'none';
+  document.getElementById('customCatInput').value = '';
+  document.getElementById('customAmtInput').value = '';
+  openModal('addModal');
+}
+
+function selectCategory(cat, btn) {
+  document.querySelectorAll('#categoryChips .chip').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  if (currentModalType==='output') btn.classList.add('output-chip');
+  selectedCategory = cat;
+  document.getElementById('customCatGroup').style.display = cat==='Eigen...' ? 'block' : 'none';
+}
+
+function selectAmount(amt, btn) {
+  document.querySelectorAll('#amountChips .chip').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  if (currentModalType==='output') btn.classList.add('output-chip');
+  selectedAmount = amt;
+  document.getElementById('customAmtGroup').style.display = amt==='custom' ? 'block' : 'none';
+}
+
+async function saveEvent() {
+  let cat = selectedCategory;
+  let amt = selectedAmount;
+  if (cat==='Eigen...') { cat = document.getElementById('customCatInput').value.trim(); if (!cat) { showToast('Voer een categorie in'); return; } }
+  if (amt==='custom')   { amt = parseInt(document.getElementById('customAmtInput').value); if (!amt||amt<1) { showToast('Voer een hoeveelheid in'); return; } }
+  if (!cat) { showToast('Selecteer een categorie'); return; }
+  if (!amt) { showToast('Selecteer een hoeveelheid'); return; }
+
+  const time = document.getElementById('eventTime').value;
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  activeEditRecord.events.push({ id, type: currentModalType, category: cat, amount: amt, time });
+  await dbPut(activeEditRecord);
+  closeModal('addModal');
+
+  if (activeEditRecord.date === currentDate) {
+    currentDayRecord = activeEditRecord;
+    renderToday();
+  } else {
+    renderDetailView(activeEditRecord);
+    renderCalendar();
+  }
+  showToast(currentModalType==='intake' ? `+${amt} ml inname ✓` : `+${amt} ml uitscheiding ✓`);
+}
+
+// ═══════════════════════════════════════════
+// EVENT ROW + DELETE
+// ═══════════════════════════════════════════
+function eventRow(e, dateStr) {
+  const isWake = e.type === 'wake';
+  const amtHtml = isWake ? '' : `<span class="event-amount ${e.type}">${e.amount} ml</span>`;
+  const delBtn  = isWake ? '' : `<button class="event-del" onclick="deleteEvent('${e.id}','${dateStr||currentDate}')">✕</button>`;
+  return `<div class="event-item">
+    <div class="event-dot ${e.type}"></div>
+    <div class="event-meta">
+      <div class="event-name">${e.category}</div>
+      <div class="event-time">${e.time}</div>
+    </div>
+    ${amtHtml}${delBtn}
+  </div>`;
+}
+
+function healthBadge(val, goal) {
+  const pct = val / goal * 100;
+  let cls, label;
+  if (pct >= 100)     { cls='good'; label='✓ Op doel'; }
+  else if (pct >= 60) { cls='warn'; label='⚡ Bijna op doel'; }
+  else                { cls='low';  label='▲ Onder doel'; }
+  return `<div class="health-badge ${cls}">${label}</div>`;
+}
+
+async function deleteEvent(id, dateStr) {
+  if (dateStr && dateStr !== currentDate) {
+    const record = await dbGet(dateStr);
+    if (!record) return;
+    record.events = record.events.filter(e=>e.id!==id);
+    await dbPut(record);
+    renderDetailView(ensureRecordFields(record));
+    renderCalendar();
+  } else {
+    currentDayRecord.events = currentDayRecord.events.filter(e=>e.id!==id);
+    await dbPut(currentDayRecord);
+    renderToday();
+  }
+  showToast('Verwijderd');
+}
+
+// ═══════════════════════════════════════════
+// MODAL HELPERS
+// ═══════════════════════════════════════════
+function openModal(id) { document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
+function closeOnBackdrop(e,id) { if (e.target.id===id) closeModal(id); }
+
+// ═══════════════════════════════════════════
+// HISTORY / CALENDAR
+// ═══════════════════════════════════════════
+async function renderCalendar() {
+  const allDays = await dbGetAll();
+  const datesWithData = new Set(allDays.map(d=>d.date));
+  const y = calViewDate.getFullYear(), m = calViewDate.getMonth();
+  const monthNames = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+  document.getElementById('calMonth').textContent = `${monthNames[m]} ${y}`;
+  document.getElementById('calDayHeaders').innerHTML = ['Ma','Di','Wo','Do','Vr','Za','Zo'].map(d=>`<div class="cal-day-header">${d}</div>`).join('');
+  let startDow = new Date(y,m,1).getDay();
+  startDow = startDow===0 ? 6 : startDow-1;
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const todayStr = today();
+  let html = '';
+  for (let i=0;i<startDow;i++) html+=`<div class="cal-day empty"></div>`;
+  for (let d=1;d<=daysInMonth;d++) {
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls = ['cal-day', ds===todayStr&&'today', datesWithData.has(ds)&&'has-data', ds===selectedCalDate&&'selected'].filter(Boolean).join(' ');
+    const dot = datesWithData.has(ds)&&ds!==todayStr ? '<div class="cal-dot"></div>' : '';
+    html+=`<div class="${cls}" onclick="selectCalDay('${ds}')">${d}${dot}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+async function selectCalDay(dateStr) {
+  selectedCalDate = dateStr;
+  renderCalendar();
+  const raw = await dbGet(dateStr);
+  const record = raw ? ensureRecordFields(raw) : newDayRecord(dateStr);
+  renderDetailView(record);
+  document.getElementById('historyCalendar').style.display = 'none';
+  document.getElementById('historyDetail').style.display = 'block';
+}
+
+function renderDetailView(record) {
+  const dateStr = record.date;
+  const r = ensureRecordFields(record);
+  const dateObj = new Date(dateStr+'T12:00:00');
+  document.getElementById('detailDate').textContent = dateObj.toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+  const intake = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
+  const output = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+  const outputGoal = intakeSinceWake(r);
+  document.getElementById('detailIntake').textContent = intake;
+  document.getElementById('detailOutput').textContent = output;
+  document.getElementById('detailOutputGoalText').textContent = outputGoal > 0 ? `ml · doel ${outputGoal} ml` : 'ml';
+
+  // Wake row
+  const wakeDiv = document.getElementById('detailWakeRow');
+  if (r.wakeTime) {
+    wakeDiv.innerHTML = `<div class="wake-btn set" onclick="openDetailWakeModal('${dateStr}')"><span class="wake-btn-label">Opgestaan om</span><span class="wake-btn-value">${r.wakeTime}</span></div>`;
+  } else {
+    wakeDiv.innerHTML = `<div class="wake-btn" onclick="openDetailWakeModal('${dateStr}')"><span class="wake-btn-label">Tik om dagstart vast te leggen</span><span class="wake-btn-value">—</span></div>`;
+  }
+
+  // Toilet schedule in detail view
+  const toiletDiv = document.getElementById('detailToiletSection');
+  if (r.wakeTime) {
+    toiletDiv.innerHTML = `
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span>Toiletschema</span>
+        <button class="btn-regenerate" onclick="regenerateDetailSchedule('${dateStr}')">↺ Genereer opnieuw</button>
+      </div>
+      ${renderToiletScheduleHTML(r, dateStr)}`;
+  } else {
+    toiletDiv.innerHTML = '';
+  }
+
+  // Events
+  const evs = [...r.events].sort((a,b)=>a.time.localeCompare(b.time));
+  let html = '';
+  evs.forEach(e => { html += eventRow(e, dateStr); });
+  document.getElementById('detailEvents').innerHTML = html || '<div class="empty-state">Nog geen gebeurtenissen.<br>Gebruik de knoppen hieronder.</div>';
+}
+
+async function regenerateDetailSchedule(dateStr) {
+  const raw = await dbGet(dateStr);
+  if (!raw) return;
+  const r = ensureRecordFields(raw);
+  if (!r.wakeTime) { showToast('Geen dagstart ingesteld'); return; }
+  r.toiletSchedule = generateToiletSchedule(r.wakeTime, r.toiletInterval||3, r.firstVisitOffset||r.toiletInterval||3);
+  await dbPut(r);
+  renderDetailView(r);
+  showToast('Schema gegenereerd ↺');
+}
+
+async function openDetailAddModal(type) {
+  const raw = await dbGet(selectedCalDate) || newDayRecord(selectedCalDate);
+  openAddModal(type, ensureRecordFields(raw));
+}
+
+function showCalendar() {
+  document.getElementById('historyCalendar').style.display = 'block';
+  document.getElementById('historyDetail').style.display = 'none';
+}
+function calPrev() { calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()-1, 1); renderCalendar(); }
+function calNext() { calViewDate = new Date(calViewDate.getFullYear(), calViewDate.getMonth()+1, 1); renderCalendar(); }
+
+// ═══════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════
+function setChartPeriod(p, btn) {
+  chartPeriod = p;
+  document.querySelectorAll('.chart-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  // Show date picker only for day view
+  const picker = document.getElementById('chartDayPickerRow');
+  if (p === 'day') {
+    picker.style.display = 'flex';
+    chartDayDate = chartDayDate || today();
+    document.getElementById('chartDayInput').value = chartDayDate;
+  } else {
+    picker.style.display = 'none';
+  }
+  renderChart();
+}
+
+function onChartDayChange(dateStr) {
+  if (!dateStr) return;
+  chartDayDate = dateStr;
+  document.getElementById('chartDayInput').value = dateStr;
+  renderChart();
+}
+
+async function renderChart() {
+  const allDays = await dbGetAll();
+  const todayStr = today();
+  let labels=[], intakeData=[], outputData=[];
+
+  if (chartPeriod==='day') {
+    // Init picker if needed
+    const pickerEl = document.getElementById('chartDayInput');
+    if (!pickerEl.value) { pickerEl.value = chartDayDate || todayStr; }
+    const targetDate = chartDayDate || todayStr;
+    const record = allDays.find(d=>d.date===targetDate);
+    const hours = Array.from({length:24},(_,i)=>i);
+    labels = hours.map(h=>String(h).padStart(2,'0')+':00');
+    intakeData = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='intake'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount,0));
+    outputData = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='output'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount,0));
+    let last=23; while(last>0&&intakeData[last]===0&&outputData[last]===0) last--;
+    const end=Math.min(last+2,23);
+    labels=labels.slice(0,end+1); intakeData=intakeData.slice(0,end+1); outputData=outputData.slice(0,end+1);
+  } else if (chartPeriod==='week') {
+    for (let i=6;i>=0;i--) {
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const ds=d.toISOString().slice(0,10);
+      labels.push(['zo','ma','di','wo','do','vr','za'][d.getDay()]);
+      const rec=allDays.find(r=>r.date===ds);
+      intakeData.push(rec?rec.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0):0);
+      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0):0);
+    }
+  } else {
+    for (let i=29;i>=0;i--) {
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const ds=d.toISOString().slice(0,10); const day=d.getDate();
+      labels.push(day===1||day===15?String(day):'');
+      const rec=allDays.find(r=>r.date===ds);
+      intakeData.push(rec?rec.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0):0);
+      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0):0);
+    }
+  }
+
+  if (mainChartInstance) { mainChartInstance.destroy(); mainChartInstance=null; }
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  mainChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'Inname (ml)', data:intakeData, borderColor:'#00c9b1', backgroundColor:'rgba(0,201,177,0.1)', borderWidth:2.5, pointRadius:chartPeriod==='day'?3:4, pointBackgroundColor:'#00c9b1', tension:0.35, fill:true },
+      { label:'Uitscheiding (ml)', data:outputData, borderColor:'#f5a623', backgroundColor:'rgba(245,166,35,0.08)', borderWidth:2.5, pointRadius:chartPeriod==='day'?3:4, pointBackgroundColor:'#f5a623', tension:0.35, fill:true }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#142840', borderColor:'#1e3a52', borderWidth:1, titleColor:'#6a90a8', bodyColor:'#e8f4f8', callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y} ml`} } },
+      scales: {
+        x:{grid:{color:'rgba(30,58,82,0.5)'},ticks:{color:'#3a5f78',font:{family:"'Space Mono'",size:10}}},
+        y:{grid:{color:'rgba(30,58,82,0.5)'},ticks:{color:'#3a5f78',font:{family:"'Space Mono'",size:10},callback:v=>v+'ml'},beginAtZero:true}
+      }
+    }
+  });
+  const totalI=intakeData.reduce((s,v)=>s+v,0), totalO=outputData.reduce((s,v)=>s+v,0), maxI=Math.max(...intakeData,0);
+  let periodLabel = '';
+  if (chartPeriod==='day') {
+    const d = new Date((chartDayDate||today())+'T12:00:00');
+    periodLabel = d.toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long' });
+  } else if (chartPeriod==='week') {
+    periodLabel = 'Afgelopen 7 dagen';
+  } else {
+    periodLabel = 'Afgelopen 30 dagen';
+  }
+  document.getElementById('chartStats').innerHTML=`
+    <div class="stat-card" style="grid-column:1/-1;text-align:center;padding:8px"><div style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">${periodLabel}</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--teal)">${totalI}</div><div class="stat-label">Totaal inname</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--amber)">${totalO}</div><div class="stat-label">Totaal uitscheiding</div></div>
+    <div class="stat-card"><div class="stat-value">${maxI}</div><div class="stat-label">Piek inname</div></div>`;
+}
+
+// ═══════════════════════════════════════════
+// IMPORT
+// ═══════════════════════════════════════════
+let importParsedRecords = null; // parsed day records ready to write
+let importMode = 'merge';       // 'merge' | 'replace'
+
+function selectImportMode(mode) {
+  importMode = mode;
+  document.getElementById('importModesMerge').classList.toggle('selected', mode === 'merge');
+  document.getElementById('importModesReplace').classList.toggle('selected', mode === 'replace');
+}
+
+function onImportFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      parseImportWorkbook(wb, file.name);
+    } catch(err) {
+      showImportResult('error', `Kan bestand niet lezen: ${err.message}`, null);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseImportWorkbook(wb, fileName) {
+  // We reconstruct day records from both sheets.
+  // Sheet "Dagoverzicht" has: Datum, Dagstart, ..., Toiletschema nacht, Toiletschema dag, App versie
+  // Sheet "Gebeurtenissen" has: Datum, Tijd, Type, Categorie, Hoeveelheid (ml), Dagstart, App versie
+
+  const sheetNames = wb.SheetNames;
+  const evSheetName  = sheetNames.find(n => n.toLowerCase().includes('gebeurtenis')) || sheetNames[0];
+  const sumSheetName = sheetNames.find(n => n.toLowerCase().includes('dag'))        || sheetNames[1];
+
+  if (!evSheetName) { showImportResult('error', 'Geen geldig HydroTrack exportbestand gevonden.', null); return; }
+
+  const evSheet  = XLSX.utils.sheet_to_json(wb.Sheets[evSheetName],  { defval: '' });
+  const sumSheet = sumSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[sumSheetName], { defval: '' }) : [];
+
+  // Build a map of date → day record from "Dagoverzicht"
+  const dayMap = {};
+
+  for (const row of sumSheet) {
+    const date = String(row['Datum'] || row[Object.keys(row)[0]]).trim();
+    if (!date || !date.match(/^\d{4}-\d{2}-\d{2}$/)) continue;
+    const wakeTime = String(row['Dagstart'] || '').trim() || null;
+    const nightRaw = String(row['Toiletschema nacht'] || '').trim();
+    const dayRaw   = String(row['Toiletschema dag'] || '').trim();
+    const nightToiletTime  = nightRaw || null;
+    const toiletSchedule   = dayRaw ? dayRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+
+    dayMap[date] = ensureRecordFields({
+      date,
+      wakeTime,
+      nightToiletTime,
+      toiletSchedule,
+      events: []
+    });
+  }
+
+  // Parse events from "Gebeurtenissen" sheet
+  let evCount = 0;
+  const skipped = [];
+
+  for (const row of evSheet) {
+    const date     = String(row['Datum'] || '').trim();
+    const time     = String(row['Tijd']  || '').trim();
+    const typeRaw  = String(row['Type']  || '').trim().toLowerCase();
+    const category = String(row['Categorie'] || '').trim();
+    const amtRaw   = row['Hoeveelheid (ml)'];
+    const amount   = parseInt(amtRaw);
+
+    if (!date.match(/^\d{4}-\d{2}-\d{2}$/) || !time || !category || isNaN(amount) || amount < 1) {
+      skipped.push(row); continue;
+    }
+    const type = typeRaw.includes('inname') || typeRaw === 'intake' ? 'intake'
+               : typeRaw.includes('uitscheiding') || typeRaw === 'output' ? 'output'
+               : null;
+    if (!type) { skipped.push(row); continue; }
+
+    if (!dayMap[date]) {
+      // If not in Dagoverzicht, try to get wakeTime from Dagstart column in events sheet
+      const wakeFromEvents = String(row['Dagstart'] || '').trim() || null;
+      dayMap[date] = ensureRecordFields({ date, wakeTime: wakeFromEvents, events: [] });
+    }
+    const id = 'imp_' + date.replace(/-/g,'') + '_' + time.replace(':','') + '_' + Math.random().toString(36).slice(2,6);
+    dayMap[date].events.push({ id, type, category, amount, time });
+    evCount++;
+  }
+
+  const records = Object.values(dayMap);
+  if (records.length === 0 || evCount === 0) {
+    showImportResult('error', 'Geen geldige gegevens gevonden in het bestand.', null);
+    return;
+  }
+
+  importParsedRecords = records;
+
+  // Show preview
+  const datesSorted = records.map(r=>r.date).sort();
+  const firstDate = datesSorted[0], lastDate = datesSorted[datesSorted.length-1];
+  const skippedMsg = skipped.length > 0 ? `<br>⚠️ <strong>${skipped.length}</strong> regels overgeslagen (ongeldig formaat)` : '';
+
+  showImportResult('ok',
+    `Bestand gelezen: <em style="color:var(--text)">${fileName}</em>`,
+    `Gevonden: <strong>${records.length}</strong> dagen &nbsp;·&nbsp; <strong>${evCount}</strong> gebeurtenissen<br>` +
+    `Periode: <strong>${firstDate}</strong> → <strong>${lastDate}</strong>${skippedMsg}`
+  );
+
+  document.getElementById('importModeRow').style.display = 'grid';
+  document.getElementById('importConfirmBtn').disabled = false;
+}
+
+function showImportResult(type, title, rows) {
+  const el = document.getElementById('importResult');
+  el.classList.add('show');
+  el.style.borderColor = type === 'error' ? 'var(--red)' : 'var(--teal)';
+  document.getElementById('importResultTitle').innerHTML = title;
+  document.getElementById('importResultRows').innerHTML = rows || '';
+  if (type === 'error') {
+    document.getElementById('importModeRow').style.display = 'none';
+    document.getElementById('importConfirmBtn').disabled = true;
+    importParsedRecords = null;
+  }
+}
+
+async function confirmImport() {
+  if (!importParsedRecords) return;
+  const btn = document.getElementById('importConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Bezig met importeren…';
+
+  try {
+    if (importMode === 'replace') {
+      // Clear all existing days first
+      const all = await dbGetAll();
+      await Promise.all(all.map(d => new Promise((res,rej) => {
+        const req = db.transaction('days','readwrite').objectStore('days').delete(d.date);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+      })));
+      // Write all imported records
+      for (const record of importParsedRecords) await dbPut(record);
+    } else {
+      // Merge: for each imported day, merge with existing
+      for (const imported of importParsedRecords) {
+        const existing = await dbGet(imported.date);
+        if (!existing) {
+          await dbPut(imported);
+        } else {
+          // Keep existing events, add any from import that don't overlap by time+type+amount
+          const ex = ensureRecordFields(existing);
+          const existingKeys = new Set(ex.events.map(e => `${e.time}|${e.type}|${e.amount}|${e.category}`));
+          const newEvents = imported.events.filter(e => !existingKeys.has(`${e.time}|${e.type}|${e.amount}|${e.category}`));
+          ex.events.push(...newEvents);
+          // Merge wakeTime and toilet schedule if missing
+          if (!ex.wakeTime && imported.wakeTime) ex.wakeTime = imported.wakeTime;
+          if ((!ex.toiletSchedule || ex.toiletSchedule.length === 0) && imported.toiletSchedule?.length > 0)
+            ex.toiletSchedule = imported.toiletSchedule;
+          if (!ex.nightToiletTime && imported.nightToiletTime) ex.nightToiletTime = imported.nightToiletTime;
+          await dbPut(ex);
+        }
+      }
+    }
+
+    // Reload today's record in case it was affected
+    const raw = await dbGet(currentDate);
+    currentDayRecord = raw ? ensureRecordFields(raw) : newDayRecord(currentDate);
+    renderToday();
+    renderCalendar();
+    renderExportStats();
+
+    const count = importParsedRecords.length;
+    const evCount = importParsedRecords.reduce((s,r)=>s+r.events.length,0);
+    importParsedRecords = null;
+
+    // Reset UI
+    document.getElementById('importFileInput').value = '';
+    document.getElementById('importResult').classList.remove('show');
+    document.getElementById('importModeRow').style.display = 'none';
+    btn.textContent = '↑ Importeer gegevens';
+
+    showToast(`✓ ${count} dagen, ${evCount} events geïmporteerd`);
+  } catch(err) {
+    btn.disabled = false;
+    btn.textContent = '↑ Importeer gegevens';
+    showImportResult('error', `Import mislukt: ${err.message}`, null);
+  }
+}
+
+// ═══════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════
+async function renderExportStats() {
+  const all = await dbGetAll();
+  const totalEvents = all.reduce((s,d)=>s+d.events.length,0);
+  document.getElementById('exportStats').innerHTML=`
+    <div class="export-stat"><div class="export-stat-val">${all.length}</div><div class="export-stat-label">Dagen geregistreerd</div></div>
+    <div class="export-stat"><div class="export-stat-val">${totalEvents}</div><div class="export-stat-label">Totaal gebeurtenissen</div></div>`;
+}
+
+async function exportExcel() {
+  const all = await dbGetAll();
+  if (all.length===0) { showToast('Nog geen data om te exporteren'); return; }
+
+  const evRows = [['Datum','Tijd','Type','Categorie','Hoeveelheid (ml)','Dagstart','App versie']];
+  all.sort((a,b)=>a.date.localeCompare(b.date)).forEach(day => {
+    [...day.events].sort((a,b)=>a.time.localeCompare(b.time)).forEach(e => {
+      evRows.push([day.date, e.time, e.type==='intake'?'Inname':'Uitscheiding', e.category, e.amount, day.wakeTime||'', APP_VERSION]);
+    });
+  });
+
+  const sumRows = [['Datum','Dagstart','Inname (ml)','Uitscheiding (ml)','Uitscheiding doel (ml)','Verschil (ml)','Doel gehaald','Toiletschema nacht','Toiletschema dag','App versie']];
+  all.forEach(day => {
+    const r = ensureRecordFields(day);
+    const intake  = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
+    const output  = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+    const goal    = intakeSinceWake(r);
+    sumRows.push([
+      r.date, r.wakeTime||'', intake, output, goal, intake-output,
+      goal>0 ? (output>=goal?'Ja':'Nee') : '—',
+      r.nightToiletTime||'',
+      (r.toiletSchedule||[]).join(', '),
+      APP_VERSION
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(evRows),  'Gebeurtenissen');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sumRows), 'Dagoverzicht');
+  XLSX.writeFile(wb, `HydroTrack_${today()}.xlsx`);
+  showToast('Export gedownload ✓');
+}
+
+// ═══════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+
+// ═══════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
