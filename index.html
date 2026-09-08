@@ -183,6 +183,14 @@
   .stat-value { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--teal); }
   .stat-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
 
+  /* ── BLAASLEDIGING ── */
+  .void-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .void-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 6px; text-align: center; }
+  .void-val { font-family: var(--mono); font-size: 19px; font-weight: 700; color: var(--purple); }
+  .void-lbl { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; line-height: 1.3; }
+  .void-note { font-size: 10px; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+  .health-badge.purple { background: rgba(155,127,232,0.15); color: var(--purple); }
+
   /* ── CHART DATE PICKER ── */
   .chart-day-picker { display: flex; align-items: center; gap: 10px; margin: 10px 16px 0; }
   .chart-day-picker label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); white-space: nowrap; }
@@ -313,6 +321,12 @@
         </button>
       </div>
 
+      <div class="card" id="voidCard" style="margin-top:12px">
+        <div class="card-title">Blaaslediging</div>
+        <div id="voidStatsContent"></div>
+        <div class="void-note">Residu = wat direct na het plassen via de SPC afloopt. Richtwaarde: onder 100 ml gunstig, boven 200 ml bespreken met de uroloog.</div>
+      </div>
+
       <div class="card" style="margin-top:12px">
         <div class="card-title">Gebeurtenissen vandaag</div>
         <div class="events-list" id="todayEvents">
@@ -359,6 +373,8 @@
           <div class="card-title">Dagstart</div>
           <div id="detailWakeRow" style="margin-bottom:14px"></div>
           <div id="detailToiletSection" style="margin-bottom:14px"></div>
+          <div class="card-title">Blaaslediging</div>
+          <div id="detailVoidSection" style="margin-bottom:14px"></div>
           <div class="card-title">Gebeurtenissen</div>
           <div class="events-list" id="detailEvents"></div>
         </div>
@@ -393,6 +409,7 @@
       <div class="chart-legend">
         <div class="legend-item"><div class="legend-dot" style="background:var(--teal)"></div>Inname</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Uitscheiding</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Residu</div>
       </div>
       <div class="stats-grid" id="chartStats"></div>
       <div class="section-spacer"></div>
@@ -506,6 +523,17 @@
       <label class="form-label">Eigen hoeveelheid (ml)</label>
       <input class="form-input" id="customAmtInput" type="number" placeholder="Bijv. 175" min="1" max="5000">
     </div>
+    <div class="form-group" id="residualGroup" style="display:none">
+      <label class="form-label">Residu via SPC (ml)</label>
+      <div class="chip-group" id="residualChips">
+        <button class="chip" onclick="setResidual(0,this)">0 ml</button>
+        <button class="chip" onclick="setResidual(50,this)">50 ml</button>
+        <button class="chip" onclick="setResidual(100,this)">100 ml</button>
+        <button class="chip" onclick="setResidual(150,this)">150 ml</button>
+      </div>
+      <input class="form-input" id="residualInput" type="number" min="0" max="3000" placeholder="Leeg = niet gemeten" style="margin-top:8px">
+      <div class="form-hint">Open de stop direct na het plassen en meet wat er afloopt.</div>
+    </div>
     <div class="form-group">
       <label class="form-label">Tijd</label>
       <input class="form-input" id="eventTime" type="time">
@@ -577,7 +605,7 @@
 // ═══════════════════════════════════════════
 // VERSION
 // ═══════════════════════════════════════════
-const APP_VERSION = 'v2026.03.17.5';
+const APP_VERSION = 'v2026.09.08.1';
 
 // ═══════════════════════════════════════════
 // DB — IndexedDB
@@ -639,6 +667,8 @@ let timeEditContext = null; // { record, section: 'night'|'day', index: number|n
 const INTAKE_CATS = ['Koffie','Water','Thee','Sap','Frisdrank','Eigen...'];
 const OUTPUT_CATS = ['Mictie','Eigen...'];
 const AMOUNTS = [140, 250, 300];
+const RESIDUAL_GOOD = 100;   // ml — onder deze waarde gunstig
+const RESIDUAL_WARN = 200;   // ml — hierboven overleggen met uroloog
 
 // ═══════════════════════════════════════════
 // DATA MODEL
@@ -690,6 +720,58 @@ function intakeSinceWake(record) {
 }
 
 // ═══════════════════════════════════════════
+// MICTIE / RESIDU
+// ═══════════════════════════════════════════
+function hasResidual(e) {
+  return e.type === 'output' && e.residual !== null && e.residual !== undefined && e.residual !== '';
+}
+
+// Totale uitscheiding = geplast volume + residu dat via de SPC afloopt
+function outputTotal(record) {
+  return record.events
+    .filter(e => e.type === 'output')
+    .reduce((s,e) => s + e.amount + (Number(e.residual) || 0), 0);
+}
+
+function voidStats(record) {
+  const measured = record.events.filter(hasResidual);
+  if (measured.length === 0) return null;
+  const res  = measured.map(e => Number(e.residual) || 0);
+  const effs = measured.map(e => {
+    const tot = e.amount + (Number(e.residual) || 0);
+    return tot > 0 ? e.amount / tot * 100 : 0;
+  });
+  return {
+    count: measured.length,
+    avgResidual: Math.round(res.reduce((a,b)=>a+b,0) / measured.length),
+    maxResidual: Math.max(...res),
+    totalResidual: res.reduce((a,b)=>a+b,0),
+    avgEfficiency: Math.round(effs.reduce((a,b)=>a+b,0) / measured.length)
+  };
+}
+
+function residualBadge(avg) {
+  if (avg < RESIDUAL_GOOD)      return '<div class="health-badge good">\u2713 Lage rest</div>';
+  else if (avg <= RESIDUAL_WARN) return '<div class="health-badge warn">\u26a1 Verhoogde rest</div>';
+  else                           return '<div class="health-badge low">\u25b2 Hoge rest</div>';
+}
+
+function renderVoidStatsHTML(record) {
+  const st = voidStats(record);
+  if (!st) return '<div class="empty-state" style="padding:14px">Nog geen residu gemeten.<br>Voeg bij een mictie het residu toe dat via de SPC afloopt.</div>';
+  return `
+    <div class="void-grid">
+      <div class="void-stat"><div class="void-val">${st.avgResidual}</div><div class="void-lbl">Gem. residu (ml)</div></div>
+      <div class="void-stat"><div class="void-val">${st.maxResidual}</div><div class="void-lbl">Hoogste residu</div></div>
+      <div class="void-stat"><div class="void-val">${st.avgEfficiency}%</div><div class="void-lbl">Gem. lediging</div></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+      ${residualBadge(st.avgResidual)}
+      <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono)">${st.count} micties gemeten</span>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
 async function init() {
@@ -733,7 +815,7 @@ function showView(name, btn) {
 function renderToday() {
   const r = currentDayRecord;
   const intake = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
-  const output = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+  const output = outputTotal(r);
   const outputGoal = intakeSinceWake(r);
 
   document.getElementById('totalIntake').textContent = intake;
@@ -773,6 +855,9 @@ function renderToday() {
   } else {
     toiletCard.style.display = 'none';
   }
+
+  // Blaaslediging
+  document.getElementById('voidStatsContent').innerHTML = renderVoidStatsHTML(r);
 
   // Events
   const container = document.getElementById('todayEvents');
@@ -1003,6 +1088,9 @@ function openAddModal(type, targetRecord) {
   document.getElementById('customAmtGroup').style.display = 'none';
   document.getElementById('customCatInput').value = '';
   document.getElementById('customAmtInput').value = '';
+  document.getElementById('residualGroup').style.display = type === 'output' ? 'block' : 'none';
+  document.getElementById('residualInput').value = '';
+  document.querySelectorAll('#residualChips .chip').forEach(c=>c.classList.remove('selected','output-chip'));
   openModal('addModal');
 }
 
@@ -1022,6 +1110,12 @@ function selectAmount(amt, btn) {
   document.getElementById('customAmtGroup').style.display = amt==='custom' ? 'block' : 'none';
 }
 
+function setResidual(val, btn) {
+  document.querySelectorAll('#residualChips .chip').forEach(c=>c.classList.remove('selected','output-chip'));
+  btn.classList.add('selected','output-chip');
+  document.getElementById('residualInput').value = val;
+}
+
 async function saveEvent() {
   let cat = selectedCategory;
   let amt = selectedAmount;
@@ -1032,7 +1126,16 @@ async function saveEvent() {
 
   const time = document.getElementById('eventTime').value;
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-  activeEditRecord.events.push({ id, type: currentModalType, category: cat, amount: amt, time });
+  const ev = { id, type: currentModalType, category: cat, amount: amt, time };
+  if (currentModalType === 'output') {
+    const raw = document.getElementById('residualInput').value.trim();
+    if (raw !== '') {
+      const n = parseInt(raw);
+      if (isNaN(n) || n < 0) { showToast('Ongeldig residu'); return; }
+      ev.residual = n;
+    }
+  }
+  activeEditRecord.events.push(ev);
   await dbPut(activeEditRecord);
   closeModal('addModal');
 
@@ -1051,13 +1154,17 @@ async function saveEvent() {
 // ═══════════════════════════════════════════
 function eventRow(e, dateStr) {
   const isWake = e.type === 'wake';
+  const showRes = !isWake && hasResidual(e);
+  const resVal  = showRes ? Number(e.residual) : 0;
+  const eff     = showRes && (e.amount + resVal) > 0 ? Math.round(e.amount/(e.amount+resVal)*100) : null;
+  const subLine = showRes ? `${e.time} \u00b7 residu ${resVal} ml \u00b7 ${eff}% lediging` : e.time;
   const amtHtml = isWake ? '' : `<span class="event-amount ${e.type}">${e.amount} ml</span>`;
   const delBtn  = isWake ? '' : `<button class="event-del" onclick="deleteEvent('${e.id}','${dateStr||currentDate}')">✕</button>`;
   return `<div class="event-item">
     <div class="event-dot ${e.type}"></div>
     <div class="event-meta">
       <div class="event-name">${e.category}</div>
-      <div class="event-time">${e.time}</div>
+      <div class="event-time">${subLine}</div>
     </div>
     ${amtHtml}${delBtn}
   </div>`;
@@ -1137,7 +1244,7 @@ function renderDetailView(record) {
   document.getElementById('detailDate').textContent = dateObj.toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 
   const intake = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
-  const output = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+  const output = outputTotal(r);
   const outputGoal = intakeSinceWake(r);
   document.getElementById('detailIntake').textContent = intake;
   document.getElementById('detailOutput').textContent = output;
@@ -1163,6 +1270,9 @@ function renderDetailView(record) {
   } else {
     toiletDiv.innerHTML = '';
   }
+
+  // Blaaslediging
+  document.getElementById('detailVoidSection').innerHTML = renderVoidStatsHTML(r);
 
   // Events
   const evs = [...r.events].sort((a,b)=>a.time.localeCompare(b.time));
@@ -1223,7 +1333,7 @@ function onChartDayChange(dateStr) {
 async function renderChart() {
   const allDays = await dbGetAll();
   const todayStr = today();
-  let labels=[], intakeData=[], outputData=[];
+  let labels=[], intakeData=[], outputData=[], residualData=[], periodEvents=[];
 
   if (chartPeriod==='day') {
     // Init picker if needed
@@ -1233,19 +1343,23 @@ async function renderChart() {
     const record = allDays.find(d=>d.date===targetDate);
     const hours = Array.from({length:24},(_,i)=>i);
     labels = hours.map(h=>String(h).padStart(2,'0')+':00');
-    intakeData = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='intake'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount,0));
-    outputData = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='output'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount,0));
+    if (record) periodEvents.push(...record.events);
+    intakeData   = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='intake'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount,0));
+    outputData   = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='output'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+e.amount+(Number(e.residual)||0),0));
+    residualData = hours.map(h => !record ? 0 : record.events.filter(e=>e.type==='output'&&parseInt(e.time.split(':')[0])===h).reduce((s,e)=>s+(Number(e.residual)||0),0));
     let last=23; while(last>0&&intakeData[last]===0&&outputData[last]===0) last--;
     const end=Math.min(last+2,23);
-    labels=labels.slice(0,end+1); intakeData=intakeData.slice(0,end+1); outputData=outputData.slice(0,end+1);
+    labels=labels.slice(0,end+1); intakeData=intakeData.slice(0,end+1); outputData=outputData.slice(0,end+1); residualData=residualData.slice(0,end+1);
   } else if (chartPeriod==='week') {
     for (let i=6;i>=0;i--) {
       const d=new Date(); d.setDate(d.getDate()-i);
       const ds=d.toISOString().slice(0,10);
       labels.push(['zo','ma','di','wo','do','vr','za'][d.getDay()]);
       const rec=allDays.find(r=>r.date===ds);
+      if (rec) periodEvents.push(...rec.events);
       intakeData.push(rec?rec.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0):0);
-      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0):0);
+      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount+(Number(e.residual)||0),0):0);
+      residualData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+(Number(e.residual)||0),0):0);
     }
   } else {
     for (let i=29;i>=0;i--) {
@@ -1253,8 +1367,10 @@ async function renderChart() {
       const ds=d.toISOString().slice(0,10); const day=d.getDate();
       labels.push(day===1||day===15?String(day):'');
       const rec=allDays.find(r=>r.date===ds);
+      if (rec) periodEvents.push(...rec.events);
       intakeData.push(rec?rec.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0):0);
-      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0):0);
+      outputData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount+(Number(e.residual)||0),0):0);
+      residualData.push(rec?rec.events.filter(e=>e.type==='output').reduce((s,e)=>s+(Number(e.residual)||0),0):0);
     }
   }
 
@@ -1265,7 +1381,9 @@ async function renderChart() {
     data: { labels, datasets: [
       { label:'Inname (ml)', data:intakeData, borderColor:'#00c9b1', backgroundColor:'rgba(0,201,177,0.1)', borderWidth:2.5, pointRadius:chartPeriod==='day'?3:4, pointBackgroundColor:'#00c9b1', tension:0.35, fill:true },
       { label:'Uitscheiding (ml)', data:outputData, borderColor:'#f5a623', backgroundColor:'rgba(245,166,35,0.08)', borderWidth:2.5, pointRadius:chartPeriod==='day'?3:4, pointBackgroundColor:'#f5a623', tension:0.35, fill:true }
-    ]},
+    ].concat(residualData.some(v=>v>0) ? [
+      { label:'Residu (ml)', data:residualData, borderColor:'#9b7fe8', backgroundColor:'rgba(155,127,232,0.08)', borderWidth:2, borderDash:[4,3], pointRadius:chartPeriod==='day'?3:4, pointBackgroundColor:'#9b7fe8', tension:0.35, fill:false }
+    ] : [])},
     options: {
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
@@ -1277,6 +1395,7 @@ async function renderChart() {
     }
   });
   const totalI=intakeData.reduce((s,v)=>s+v,0), totalO=outputData.reduce((s,v)=>s+v,0), maxI=Math.max(...intakeData,0);
+  const periodStats = voidStats({ events: periodEvents });
   let periodLabel = '';
   if (chartPeriod==='day') {
     const d = new Date((chartDayDate||today())+'T12:00:00');
@@ -1290,7 +1409,11 @@ async function renderChart() {
     <div class="stat-card" style="grid-column:1/-1;text-align:center;padding:8px"><div style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">${periodLabel}</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--teal)">${totalI}</div><div class="stat-label">Totaal inname</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--amber)">${totalO}</div><div class="stat-label">Totaal uitscheiding</div></div>
-    <div class="stat-card"><div class="stat-value">${maxI}</div><div class="stat-label">Piek inname</div></div>`;
+    <div class="stat-card"><div class="stat-value">${maxI}</div><div class="stat-label">Piek inname</div></div>` +
+    (periodStats ? `
+    <div class="stat-card"><div class="stat-value" style="color:var(--purple)">${periodStats.avgResidual}</div><div class="stat-label">Gem. residu</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--purple)">${periodStats.maxResidual}</div><div class="stat-label">Hoogste residu</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--purple)">${periodStats.avgEfficiency}%</div><div class="stat-label">Gem. lediging</div></div>` : '');
 }
 
 // ═══════════════════════════════════════════
@@ -1367,6 +1490,8 @@ function parseImportWorkbook(wb, fileName) {
     const category = String(row['Categorie'] || '').trim();
     const amtRaw   = row['Hoeveelheid (ml)'];
     const amount   = parseInt(amtRaw);
+    const resRaw   = row['Residu (ml)'];
+    const residual = (resRaw === '' || resRaw === undefined || resRaw === null || isNaN(parseInt(resRaw))) ? null : parseInt(resRaw);
 
     if (!date.match(/^\d{4}-\d{2}-\d{2}$/) || !time || !category || isNaN(amount) || amount < 1) {
       skipped.push(row); continue;
@@ -1382,7 +1507,9 @@ function parseImportWorkbook(wb, fileName) {
       dayMap[date] = ensureRecordFields({ date, wakeTime: wakeFromEvents, events: [] });
     }
     const id = 'imp_' + date.replace(/-/g,'') + '_' + time.replace(':','') + '_' + Math.random().toString(36).slice(2,6);
-    dayMap[date].events.push({ id, type, category, amount, time });
+    const impEv = { id, type, category, amount, time };
+    if (type === 'output' && residual !== null) impEv.residual = residual;
+    dayMap[date].events.push(impEv);
     evCount++;
   }
 
@@ -1501,22 +1628,29 @@ async function exportExcel() {
   const all = await dbGetAll();
   if (all.length===0) { showToast('Nog geen data om te exporteren'); return; }
 
-  const evRows = [['Datum','Tijd','Type','Categorie','Hoeveelheid (ml)','Dagstart','App versie']];
+  const evRows = [['Datum','Tijd','Type','Categorie','Hoeveelheid (ml)','Residu (ml)','Lediging (%)','Dagstart','App versie']];
   all.sort((a,b)=>a.date.localeCompare(b.date)).forEach(day => {
     [...day.events].sort((a,b)=>a.time.localeCompare(b.time)).forEach(e => {
-      evRows.push([day.date, e.time, e.type==='intake'?'Inname':'Uitscheiding', e.category, e.amount, day.wakeTime||'', APP_VERSION]);
+      const res = hasResidual(e) ? Number(e.residual) : '';
+      const eff = res !== '' && (e.amount+res) > 0 ? Math.round(e.amount/(e.amount+res)*100) : '';
+      evRows.push([day.date, e.time, e.type==='intake'?'Inname':'Uitscheiding', e.category, e.amount, res, eff, day.wakeTime||'', APP_VERSION]);
     });
   });
 
-  const sumRows = [['Datum','Dagstart','Inname (ml)','Uitscheiding (ml)','Uitscheiding doel (ml)','Verschil (ml)','Doel gehaald','Toiletschema nacht','Toiletschema dag','App versie']];
+  const sumRows = [['Datum','Dagstart','Inname (ml)','Uitscheiding (ml)','Uitscheiding doel (ml)','Verschil (ml)','Doel gehaald','Micties gemeten','Residu gem. (ml)','Residu hoogste (ml)','Lediging gem. (%)','Toiletschema nacht','Toiletschema dag','App versie']];
   all.forEach(day => {
     const r = ensureRecordFields(day);
     const intake  = r.events.filter(e=>e.type==='intake').reduce((s,e)=>s+e.amount,0);
-    const output  = r.events.filter(e=>e.type==='output').reduce((s,e)=>s+e.amount,0);
+    const output  = outputTotal(r);
     const goal    = intakeSinceWake(r);
+    const vs = voidStats(r);
     sumRows.push([
       r.date, r.wakeTime||'', intake, output, goal, intake-output,
       goal>0 ? (output>=goal?'Ja':'Nee') : '—',
+      vs ? vs.count : 0,
+      vs ? vs.avgResidual : '',
+      vs ? vs.maxResidual : '',
+      vs ? vs.avgEfficiency : '',
       r.nightToiletTime||'',
       (r.toiletSchedule||[]).join(', '),
       APP_VERSION
